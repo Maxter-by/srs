@@ -39,3 +39,5 @@ cmake-build-debug
 /build/
 /trunk/cmake/build
 
+.vscode/tasks.json
+trunk/conf/maxter.conf
