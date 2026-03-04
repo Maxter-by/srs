@@ -12,6 +12,7 @@
 #include <map>
 #include <sstream>
 #include <string>
+#include <deque>
 #include <vector>
 
 #include <srs_kernel_codec.hpp>
@@ -67,6 +68,30 @@ public:
     SrsPps *video_frames_;
     // The fps of audio (audio frames/packets).
     SrsPps *audio_frames_;
+    // Stable FPS estimation (video frames per second).
+    // Note: We keep the JSON field name "fps" for compatibility.
+    int fps_;
+    bool rtmp_dedup_by_ts(int64_t ts_ms);
+
+private:
+    // We estimate FPS using a 5s sliding window + EMA smoothing to avoid jumps
+    // when frames arrive in bursts (common for SRT/TS demux).
+    struct SrsFpsSample {
+        int64_t ts_ms;
+        int frames;
+        SrsFpsSample(int64_t t, int f) : ts_ms(t), frames(f) {}
+    };
+    std::deque<SrsFpsSample> fps_samples_;
+    int fps_samples_total_;
+
+    double fps_ema_;
+    int fps_stable_;
+    int fps_stable_hits_;
+    int64_t fps_last_update_ms_;
+    int64_t fps_hold_until_ms_;
+    // Deduplicate RTMP video frames by timestamp.
+    int64_t rtmp_last_video_ts_;
+    
 
 public:
     bool has_video_;
@@ -106,6 +131,11 @@ public:
     virtual void publish(std::string id);
     // Close the stream.
     virtual void close();
+    // Update rolling average FPS for the last 5 seconds.
+    virtual void on_video_frames_fps(int nb_frames, int64_t now_ms);
+
+private:
+    virtual void sync_fps(int64_t now_ms);
 };
 
 struct SrsStatisticClient {
@@ -150,6 +180,8 @@ public:
     virtual void kbps_add_delta(std::string id, ISrsKbpsDelta *delta) = 0;
     virtual void kbps_sample() = 0;
     virtual srs_error_t on_video_frames(ISrsRequest *req, int nb_frames) = 0;
+    // Update FPS estimator by video frames. For RTMP, pass ts_ms to deduplicate frames by timestamp.
+    virtual srs_error_t on_video_fps(ISrsRequest *req, int nb_frames, int64_t ts_ms) = 0;
     virtual srs_error_t on_audio_frames(ISrsRequest *req, int nb_frames) = 0;
 
 public:
@@ -243,6 +275,7 @@ public:
     // When got videos, update the frames.
     // We only stat the total number of video frames.
     virtual srs_error_t on_video_frames(ISrsRequest *req, int nb_frames);
+    virtual srs_error_t on_video_fps(ISrsRequest *req, int nb_frames, int64_t ts_ms);
     // When got audios, update the audio frames.
     // We only stat the total number of audio frames.
     virtual srs_error_t on_audio_frames(ISrsRequest *req, int nb_frames);

@@ -2239,6 +2239,15 @@ srs_error_t SrsLiveSource::on_video(SrsRtmpCommonMessage *shared_video)
         return err;
     }
 
+
+// Update FPS for RTMP video. Deduplicate by timestamp to avoid counting
+// multiple packets/fragments with the same FLV timestamp as multiple frames.
+if (stat_ && req_) {
+    // Use header timestamp in milliseconds.
+    int64_t ts_ms = shared_video->header_.timestamp_;
+    stat_->on_video_fps(req_, 1, ts_ms);
+}
+
     // convert shared_video to msg, user should not use shared_video again.
     // the payload is transfer to msg, and set to NULL in shared_video.
     SrsMediaPacket msg;

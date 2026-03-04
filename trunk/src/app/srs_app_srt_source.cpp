@@ -593,6 +593,14 @@ srs_error_t SrsSrtFrameBuilder::on_h264_frame(SrsTsMessage *msg, vector<pair<cha
         return srs_error_wrap(err, "srt ts video to rtmp");
     }
 
+    if (req_) {
+        srs_error_t r0 = _srs_stat->on_video_fps(req_, 1, -1);
+        if (r0 != srs_success) {
+            srs_warn("SRT: stat video frame err %s", srs_error_desc(r0).c_str());
+            srs_freep(r0);
+        }
+    }
+
     return err;
 }
 
@@ -782,6 +790,14 @@ srs_error_t SrsSrtFrameBuilder::on_hevc_frame(SrsTsMessage *msg, vector<pair<cha
 
     if ((err = frame_target_->on_frame(&frame)) != srs_success) {
         return srs_error_wrap(err, "srt ts hevc video to rtmp");
+    }
+
+    if (req_) {
+        srs_error_t r0 = _srs_stat->on_video_fps(req_, 1, -1);
+        if (r0 != srs_success) {
+            srs_warn("SRT: stat video frame err %s", srs_error_desc(r0).c_str());
+            srs_freep(r0);
+        }
     }
 
     return err;
@@ -1010,14 +1026,9 @@ void SrsSrtFormat::update_ts_message_stats(bool is_audio)
         ++nn_video_frames_;
     }
 
-    // Update the stat for video frames, counting TS messages as frames.
-    if (nn_video_frames_ > 288) {
-        if ((err = stat_->on_video_frames(req_, nn_video_frames_)) != srs_success) {
-            srs_warn("SRT: stat video frames err %s", srs_error_desc(err).c_str());
-            srs_freep(err);
-        }
-        nn_video_frames_ = 0;
-    }
+    // Do not update video frame statistics here. For SRT we count actual output
+    // video frames in SrsSrtFrameBuilder::on_h264_frame/on_hevc_frame, otherwise
+    // TS-message batching makes FPS too bursty and often wrong.
 
     // Update the stat for audio frames periodically.
     if (nn_audio_frames_ > 288) {

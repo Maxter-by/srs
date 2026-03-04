@@ -7,6 +7,7 @@
 #include <srs_app_statistic.hpp>
 
 #include <sstream>
+#include <cmath>
 #include <unistd.h>
 using namespace std;
 
@@ -99,6 +100,14 @@ SrsStatisticStream::SrsStatisticStream()
     nb_clients_ = 0;
     video_frames_ = new SrsPps();
     audio_frames_ = new SrsPps();
+    fps_ = 0;
+    fps_samples_total_ = 0;
+    fps_ema_ = 0.0;
+    fps_stable_ = 0;
+    fps_stable_hits_ = 0;
+    fps_last_update_ms_ = 0;
+    fps_hold_until_ms_ = 0;
+    rtmp_last_video_ts_ = -1;
 }
 
 SrsStatisticStream::~SrsStatisticStream()
@@ -167,6 +176,8 @@ srs_error_t SrsStatisticStream::dumps(SrsJsonObject *obj)
 
         video->set("width", SrsJsonAny::integer(width_));
         video->set("height", SrsJsonAny::integer(height_));
+        sync_fps(srsu2ms(srs_time_now_cached()));
+        video->set("fps", SrsJsonAny::integer(fps_));
     }
 
     if (!has_audio_) {
@@ -203,6 +214,90 @@ void SrsStatisticStream::publish(std::string id)
     vhost_->nb_streams_++;
 }
 
+void SrsStatisticStream::sync_fps(int64_t now_ms)
+{
+    if (now_ms <= 0) return;
+
+    // Keep only a 5s sliding window (actually 5000ms).
+    const int64_t kWindowMs = 5000;
+    while (!fps_samples_.empty() && now_ms - fps_samples_.front().ts_ms > kWindowMs) {
+        fps_samples_total_ -= fps_samples_.front().frames;
+        fps_samples_.pop_front();
+    }
+
+    // Prevent pathological growth if something goes weird.
+    const size_t kMaxSamples = 512;
+    while (fps_samples_.size() > kMaxSamples) {
+        fps_samples_total_ -= fps_samples_.front().frames;
+        fps_samples_.pop_front();
+    }
+
+    // Need at least some time span to compute meaningful FPS.
+    if (fps_samples_.empty()) return;
+
+    int64_t span_ms = now_ms - fps_samples_.front().ts_ms;
+    if (span_ms < 800) {
+        // Too short window: don't "invent" FPS from bursts.
+        return;
+    }
+
+    double fps_raw = (double)fps_samples_total_ * 1000.0 / (double)span_ms;
+
+    // Cap to avoid crazy spikes when frames arrive in tight bursts.
+    // Most broadcast sources will be <= 120fps. If you ever feed 240fps,
+    // you probably deserve what happens, but we still cap at 240.
+    if (fps_raw > 240.0) fps_raw = 240.0;
+    if (fps_raw < 0.0) fps_raw = 0.0;
+
+    // EMA smoothing. Use dt to adapt alpha for irregular callbacks.
+    const double kTauMs = 1500.0;
+    int64_t dt_ms = (fps_last_update_ms_ > 0) ? (now_ms - fps_last_update_ms_) : 0;
+    if (dt_ms <= 0) dt_ms = 50; // fallback
+
+    double alpha = 1.0 - exp(-(double)dt_ms / kTauMs);
+    if (fps_ema_ <= 0.0) {
+        fps_ema_ = fps_raw;
+    } else {
+        fps_ema_ = fps_ema_ + alpha * (fps_raw - fps_ema_);
+    }
+    fps_last_update_ms_ = now_ms;
+
+    // Stabilize around an integer once it becomes steady.
+    int cand = (int)llround(fps_ema_);
+    double diff = fabs(fps_ema_ - (double)cand);
+
+    if (cand > 0 && diff <= 0.75) {
+        fps_stable_hits_++;
+    } else {
+        fps_stable_hits_ = 0;
+    }
+
+    // After a short steady period, lock FPS for 5 seconds.
+    if (fps_stable_hits_ >= 20 && cand > 0) {
+        fps_stable_ = cand;
+        fps_hold_until_ms_ = now_ms + 5000;
+    }
+
+    if (fps_stable_ > 0 && now_ms <= fps_hold_until_ms_) {
+        fps_ = fps_stable_;
+    } else {
+        fps_ = (int)llround(fps_ema_);
+        if (fps_ < 0) fps_ = 0;
+    }
+}
+
+
+void SrsStatisticStream::on_video_frames_fps(int nb_frames, int64_t now_ms)
+{
+    if (nb_frames <= 0 || now_ms <= 0) return;
+
+    fps_samples_.push_back(SrsFpsSample(now_ms, nb_frames));
+    fps_samples_total_ += nb_frames;
+
+    sync_fps(now_ms);
+}
+
+
 void SrsStatisticStream::close()
 {
     // To prevent duplicated close event.
@@ -215,6 +310,14 @@ void SrsStatisticStream::close()
     active_ = false;
 
     vhost_->nb_streams_--;
+}
+
+bool SrsStatisticStream::rtmp_dedup_by_ts(int64_t ts_ms)
+{
+    if (ts_ms < 0) return true;
+    if (rtmp_last_video_ts_ == ts_ms) return false;
+    rtmp_last_video_ts_ = ts_ms;
+    return true;
 }
 
 SrsStatisticClient::SrsStatisticClient()
@@ -412,7 +515,31 @@ srs_error_t SrsStatistic::on_video_frames(ISrsRequest *req, int nb_frames)
     SrsStatisticStream *stream = create_stream(vhost, req);
 
     stream->video_frames_->sugar_ += nb_frames;
+    // NOTE: FPS is updated by on_video_fps(), because some protocols (RTMP) may batch frames.
 
+    return err;
+}
+
+srs_error_t SrsStatistic::on_video_fps(ISrsRequest *req, int nb_frames, int64_t ts_ms)
+{
+    srs_error_t err = srs_success;
+
+    if (nb_frames <= 0) return err;
+
+    SrsStatisticVhost *vhost = create_vhost(req);
+    SrsStatisticStream *stream = create_stream(vhost, req);
+
+    // For RTMP, deduplicate by timestamp.
+    if (ts_ms >= 0) {
+        if (!stream->rtmp_dedup_by_ts(ts_ms)) return srs_success;
+
+        // Count only one frame for this timestamp.
+        stream->on_video_frames_fps(1, srsu2ms(srs_time_now_cached()));
+        return err;
+    }
+
+    // For other protocols, trust nb_frames.
+    stream->on_video_frames_fps(nb_frames, srsu2ms(srs_time_now_cached()));
     return err;
 }
 
