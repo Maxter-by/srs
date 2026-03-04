@@ -53,3 +53,5 @@ cmake-build-debug
 /skills/llm-switcher
 /skills/*workspace*
 /memory/202*.md
+.vscode/tasks.json
+trunk/conf/maxter.conf
