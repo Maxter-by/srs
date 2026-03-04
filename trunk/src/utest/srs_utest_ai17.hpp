@@ -299,6 +299,7 @@ public:
 class MockStatisticForRtcApi : public ISrsStatistic
 {
 public:
+    virtual srs_error_t on_video_fps(ISrsRequest *req, int nb_frames, int64_t ts_ms) { (void)req; (void)nb_frames; (void)ts_ms; return srs_success; }
     std::string server_id_;
     std::string service_id_;
     std::string service_pid_;
@@ -550,6 +551,7 @@ public:
 class MockStatisticForHooks : public ISrsStatistic
 {
 public:
+    virtual srs_error_t on_video_fps(ISrsRequest *req, int nb_frames, int64_t ts_ms) { (void)req; (void)nb_frames; (void)ts_ms; return srs_success; }
     std::string server_id_;
     std::string service_id_;
 

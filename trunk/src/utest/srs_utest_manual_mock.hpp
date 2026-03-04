@@ -226,6 +226,7 @@ public:
     virtual void kbps_add_delta(std::string id, ISrsKbpsDelta *delta);
     virtual void kbps_sample();
     virtual srs_error_t on_video_frames(ISrsRequest *req, int nb_frames);
+    virtual srs_error_t on_video_fps(ISrsRequest *req, int nb_frames, int64_t ts_ms);
     virtual srs_error_t on_audio_frames(ISrsRequest *req, int nb_frames);
     virtual std::string server_id();
     virtual std::string service_id();

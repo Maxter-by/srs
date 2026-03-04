@@ -484,6 +484,7 @@ public:
 class MockStatisticForHttpxConn : public ISrsStatistic
 {
 public:
+    virtual srs_error_t on_video_fps(ISrsRequest *req, int nb_frames, int64_t ts_ms) { (void)req; (void)nb_frames; (void)ts_ms; return srs_success; }
     bool on_disconnect_called_;
     bool kbps_add_delta_called_;
     std::string disconnect_id_;

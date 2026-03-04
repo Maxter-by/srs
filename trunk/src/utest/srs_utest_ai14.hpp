@@ -196,7 +196,9 @@ public:
 class MockStatisticForOriginHub : public ISrsStatistic
 {
 public:
-    int on_video_info_count_;
+    
+    virtual srs_error_t on_video_fps(ISrsRequest *req, int nb_frames, int64_t ts_ms) { (void)req; (void)nb_frames; (void)ts_ms; return srs_success; }
+int on_video_info_count_;
     int on_audio_info_count_;
 
 public:

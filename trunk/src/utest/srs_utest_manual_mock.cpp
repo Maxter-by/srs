@@ -661,6 +661,14 @@ srs_error_t MockAppStatistic::on_video_frames(ISrsRequest *req, int nb_frames)
     return srs_success;
 }
 
+srs_error_t MockAppStatistic::on_video_fps(ISrsRequest *req, int nb_frames, int64_t ts_ms)
+{
+    (void)req;
+    (void)nb_frames;
+    (void)ts_ms;
+    return srs_success;
+}
+
 srs_error_t MockAppStatistic::on_audio_frames(ISrsRequest *req, int nb_frames)
 {
     return srs_success;
