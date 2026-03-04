@@ -243,6 +243,7 @@ public:
 class MockStatisticForResampleKbps : public ISrsStatistic
 {
 public:
+    virtual srs_error_t on_video_fps(ISrsRequest *req, int nb_frames, int64_t ts_ms) { (void)req; (void)nb_frames; (void)ts_ms; return srs_success; }
     int kbps_add_delta_count_;
     int kbps_sample_count_;
 

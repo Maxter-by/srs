@@ -39,6 +39,7 @@ public:
 class MockSrtStatistic : public ISrsStatistic
 {
 public:
+    virtual srs_error_t on_video_fps(ISrsRequest *req, int nb_frames, int64_t ts_ms) { (void)req; (void)nb_frames; (void)ts_ms; return srs_success; }
     int on_stream_publish_count_;
     int on_stream_close_count_;
     std::string last_publisher_id_;
