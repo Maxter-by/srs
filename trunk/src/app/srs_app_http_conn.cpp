@@ -244,6 +244,21 @@ srs_error_t SrsHttpConn::process_requests(ISrsRequest **preq)
 srs_error_t SrsHttpConn::process_request(ISrsHttpResponseWriter *w, ISrsHttpMessage *r, int rid)
 {
     srs_error_t err = srs_success;
+    
+    // If we are behind a reverse proxy, honor its real client IP headers.
+    if (SrsHttpMessage* hr = dynamic_cast<SrsHttpMessage*>(r)) {
+        if (SrsHttpHeader* h = hr->header()) {
+            string xff = h->get("X-Forwarded-For");
+            if (xff.empty()) xff = h->get("X-Real-IP");
+            if (xff.empty()) xff = h->get("CF-Connecting-IP");
+            if (!xff.empty()) {
+                size_t comma = xff.find(',');
+                string real_ip = (comma == string::npos)? xff : xff.substr(0, comma);
+                real_ip = srs_strings_trim_start(srs_strings_trim_end(real_ip, " \t\r\n"), " \t\r\n");
+                if (!real_ip.empty()) ip_ = real_ip;
+            }
+        }
+    }
 
     srs_trace("HTTP #%d %s:%d %s %s, content-length=%" PRId64 "", rid, ip_.c_str(), port_,
               r->method_str().c_str(), r->url().c_str(), r->content_length());
