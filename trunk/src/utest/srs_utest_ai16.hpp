@@ -151,6 +151,7 @@ public:
 class MockStatisticForLiveStream : public ISrsStatistic
 {
 public:
+    virtual srs_error_t on_video_fps(ISrsRequest *req, int nb_frames, int64_t ts_ms) { (void)req; (void)nb_frames; (void)ts_ms; return srs_success; }
     int on_client_count_;
     srs_error_t on_client_error_;
 
