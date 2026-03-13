@@ -234,3 +234,13 @@ void SrsBasicRtmpClient::set_recv_timeout(srs_utime_t timeout)
 {
     transport_->set_recv_timeout(timeout);
 }
+
+int64_t SrsBasicRtmpClient::get_recv_bytes()
+{
+    return transport_? transport_->get_recv_bytes() : 0;
+}
+
+int64_t SrsBasicRtmpClient::get_send_bytes()
+{
+    return transport_? transport_->get_send_bytes() : 0;
+}

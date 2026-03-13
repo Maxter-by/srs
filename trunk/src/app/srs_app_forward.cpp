@@ -18,6 +18,7 @@ using namespace std;
 #include <srs_app_rtmp_conn.hpp>
 #include <srs_app_rtmp_source.hpp>
 #include <srs_app_st.hpp>
+#include <srs_app_statistic.hpp>
 #include <srs_app_utility.hpp>
 #include <srs_core_autofree.hpp>
 #include <srs_kernel_codec.hpp>
@@ -50,9 +51,12 @@ SrsForwarder::SrsForwarder(ISrsOriginHub *h)
     trd_ = new SrsDummyCoroutine();
     queue_ = new SrsMessageQueue();
     jitter_ = new SrsRtmpJitter();
+    kbps_delta_ = new SrsEphemeralDelta();
+    last_send_bytes_ = last_recv_bytes_ = 0;
 
     app_factory_ = _srs_app_factory;
     config_ = _srs_config;
+    client_id_ = "";
 }
 
 SrsForwarder::~SrsForwarder()
@@ -61,6 +65,7 @@ SrsForwarder::~SrsForwarder()
     srs_freep(trd_);
     srs_freep(queue_);
     srs_freep(jitter_);
+    srs_freep(kbps_delta_);
 
     srs_freep(sh_video_);
     srs_freep(sh_audio_);
@@ -90,6 +95,9 @@ srs_error_t SrsForwarder::initialize(ISrsRequest *r, string ep)
 
     // Remember the source context id.
     source_cid_ = _srs_context->get_id();
+
+    SrsRand rand;
+    client_id_ = "fwd-" + rand.gen_str(12);
 
     return err;
 }
@@ -249,13 +257,33 @@ srs_error_t SrsForwarder::do_cycle()
         return srs_error_wrap(err, "sdk publish");
     }
 
+    ISrsRequest *stat_req = req_->copy();
+    if (_srs_stat) {
+        SrsStatisticClient *source = _srs_stat->find_client(source_cid_.c_str());
+        if (source && source->req_) {
+            srs_freep(stat_req);
+            stat_req = source->req_->copy();
+        }
+    }
+    SrsUniquePtr<ISrsRequest> req(stat_req);
+    req->pageUrl_ = url;
+    if ((err = _srs_stat->on_client(client_id_, req.get(), NULL, SrsRtmpConnForward)) != srs_success) {
+        return srs_error_wrap(err, "forward client statistic");
+    }
+    last_recv_bytes_ = sdk_->get_recv_bytes();
+    last_send_bytes_ = sdk_->get_send_bytes();
+
     if ((err = hub_->on_forwarder_start(this)) != srs_success) {
+        _srs_stat->on_disconnect(client_id_, err);
         return srs_error_wrap(err, "notify hub start");
     }
 
     if ((err = forward()) != srs_success) {
+        _srs_stat->on_disconnect(client_id_, err);
         return srs_error_wrap(err, "forward");
     }
+
+    _srs_stat->on_disconnect(client_id_, srs_success);
 
     srs_trace("forward publish url %s, stream=%s%s as %s", url.c_str(), req_->stream_.c_str(), req_->param_.c_str(), stream.c_str());
 
@@ -304,6 +332,20 @@ srs_error_t SrsForwarder::forward()
             srs_freep(err);
 
             srs_freep(msg);
+        }
+
+        if (_srs_stat) {
+            int64_t in = sdk_->get_recv_bytes();
+            int64_t out = sdk_->get_send_bytes();
+            int64_t delta_in = in - last_recv_bytes_;
+            int64_t delta_out = out - last_send_bytes_;
+            last_recv_bytes_ = in;
+            last_send_bytes_ = out;
+
+            if (delta_in > 0 || delta_out > 0) {
+                kbps_delta_->add_delta(delta_in, delta_out);
+                _srs_stat->kbps_add_delta(client_id_, kbps_delta_);
+            }
         }
 
         // forward all messages.

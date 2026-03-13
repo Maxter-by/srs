@@ -1004,12 +1004,14 @@ VOID TEST(ProtocolRTMPTest, RecvMessage3)
         EXPECT_STREQ("flash-publish", srs_client_type_string(SrsRtmpConnFlashPublish).c_str());
         EXPECT_STREQ("fmle-publish", srs_client_type_string(SrsRtmpConnFMLEPublish).c_str());
         EXPECT_STREQ("haivision-publish", srs_client_type_string(SrsRtmpConnHaivisionPublish).c_str());
+        EXPECT_STREQ("forward", srs_client_type_string(SrsRtmpConnForward).c_str());
         EXPECT_STREQ("Unknown", srs_client_type_string(SrsRtmpConnType(0x0f)).c_str());
 
         EXPECT_TRUE(srs_client_type_is_publish(SrsRtmpConnFlashPublish));
         EXPECT_TRUE(srs_client_type_is_publish(SrsRtcConnPublish));
         EXPECT_TRUE(srs_client_type_is_publish(SrsRtmpConnFMLEPublish));
         EXPECT_TRUE(srs_client_type_is_publish(SrsRtmpConnHaivisionPublish));
+        EXPECT_TRUE(srs_client_type_is_publish(SrsRtmpConnForward));
         EXPECT_FALSE(srs_client_type_is_publish(SrsRtmpConnPlay));
         EXPECT_FALSE(srs_client_type_is_publish(SrsRtcConnPlay));
     }

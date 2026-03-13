@@ -24,6 +24,7 @@ class SrsLiveSource;
 class SrsOriginHub;
 class ISrsOriginHub;
 class SrsKbps;
+class SrsEphemeralDelta;
 class SrsSimpleRtmpClient;
 class ISrsBasicRtmpClient;
 class ISrsAppFactory;
@@ -64,6 +65,8 @@ SRS_DECLARE_PRIVATE: // clang-format on
 SRS_DECLARE_PRIVATE: // clang-format on
     // The source or stream context id to bind to.
     SrsContextId source_cid_;
+    // The statistic id for the forwarding pseudo-client.
+    std::string client_id_;
 
 // clang-format off
 SRS_DECLARE_PRIVATE: // clang-format on
@@ -78,6 +81,10 @@ SRS_DECLARE_PRIVATE: // clang-format on
     // Cache the sequence header for retry when slave is failed.
     SrsMediaPacket *sh_audio_;
     SrsMediaPacket *sh_video_;
+    // Forwarder network bytes delta for statistic.
+    SrsEphemeralDelta *kbps_delta_;
+    int64_t last_send_bytes_;
+    int64_t last_recv_bytes_;
 
 public:
     SrsForwarder(ISrsOriginHub *h);

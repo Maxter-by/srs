@@ -543,6 +543,7 @@ enum SrsRtmpConnType {
     SrsRtmpConnFMLEPublish = 0x0200,
     SrsRtmpConnFlashPublish = 0x0201,
     SrsRtmpConnHaivisionPublish = 0x0202,
+    SrsRtmpConnForward = 0x0203,
     SrsRtcConnPublish = 0x0210,
     SrsSrtConnPublish = 0x0220,
 };
