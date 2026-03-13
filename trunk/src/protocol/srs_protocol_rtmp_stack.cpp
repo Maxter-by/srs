@@ -1593,6 +1593,8 @@ string srs_client_type_string(SrsRtmpConnType type)
         return "fmle-publish";
     case SrsRtmpConnHaivisionPublish:
         return "haivision-publish";
+    case SrsRtmpConnForward:
+        return "forward";
     case SrsRtcConnPublish:
         return "rtc-publish";
     case SrsSrtConnPlay:

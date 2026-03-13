@@ -1326,6 +1326,8 @@ public:
     virtual srs_error_t send_and_free_messages(SrsMediaPacket **msgs, int nb_msgs);
     virtual srs_error_t send_and_free_message(SrsMediaPacket *msg);
     virtual void set_recv_timeout(srs_utime_t timeout);
+    virtual int64_t get_recv_bytes();
+    virtual int64_t get_send_bytes();
 
 public:
     virtual void set_url(std::string url);

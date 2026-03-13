@@ -2516,6 +2516,16 @@ void MockRtmpClient::set_recv_timeout(srs_utime_t timeout)
     recv_timeout_ = timeout;
 }
 
+int64_t MockRtmpClient::get_recv_bytes()
+{
+    return 0;
+}
+
+int64_t MockRtmpClient::get_send_bytes()
+{
+    return 0;
+}
+
 void MockRtmpClient::set_url(std::string url)
 {
     url_ = url;

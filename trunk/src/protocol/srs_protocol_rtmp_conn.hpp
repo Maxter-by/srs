@@ -58,6 +58,9 @@ public:
 public:
     // Set receive timeout.
     virtual void set_recv_timeout(srs_utime_t timeout) = 0;
+    // Get current transport byte counters.
+    virtual int64_t get_recv_bytes() = 0;
+    virtual int64_t get_send_bytes() = 0;
 };
 
 // The simple RTMP client, provides friendly APIs.
@@ -124,6 +127,8 @@ public:
 
 public:
     virtual void set_recv_timeout(srs_utime_t timeout);
+    virtual int64_t get_recv_bytes();
+    virtual int64_t get_send_bytes();
 };
 
 #endif
