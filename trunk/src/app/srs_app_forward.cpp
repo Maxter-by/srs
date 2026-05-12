@@ -210,6 +210,7 @@ srs_error_t SrsForwarder::cycle()
 
         if ((err = do_cycle()) != srs_success) {
             srs_warn("Forwarder: Ignore error, %s", srs_error_desc(err).c_str());
+            queue_->clear();
             srs_freep(err);
         }
 

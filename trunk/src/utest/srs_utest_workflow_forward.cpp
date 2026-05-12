@@ -250,3 +250,46 @@ VOID TEST(BasicWorkflowForwardTest, ManuallyVerifyForwardingWithToken)
     // Wait for forwarder to stop
     srs_usleep(1 * SRS_UTIME_MILLISECONDS);
 }
+
+VOID TEST(BasicWorkflowForwardTest, ClearQueueAfterConnectFailure)
+{
+    srs_error_t err;
+
+    SrsUniquePtr<MockRequest> req(new MockRequest("test.vhost", "live", "stream1"));
+    MockRtmpClient *mock_sdk = new MockRtmpClient();
+    mock_sdk->connect_error_ = srs_error_new(ERROR_SOCKET_CONNECT, "mock connect failed");
+
+    SrsUniquePtr<MockAppFactoryForForwarder> mock_factory(new MockAppFactoryForForwarder());
+    mock_factory->mock_rtmp_client_ = mock_sdk;
+    SrsUniquePtr<MockAppConfig> mock_config(new MockAppConfig());
+
+    SrsUniquePtr<MockOriginHub> mock_hub(new MockOriginHub());
+    SrsUniquePtr<SrsForwarder> forwarder(new SrsForwarder(mock_hub.get()));
+    forwarder->app_factory_ = mock_factory.get();
+    forwarder->config_ = mock_config.get();
+
+    HELPER_EXPECT_SUCCESS(forwarder->initialize(req.get(), "127.0.0.1:19350"));
+
+    SrsUniquePtr<SrsRtmpCommonMessage> msg(new SrsRtmpCommonMessage());
+    msg->header_.initialize_video(5, 100, 1);
+    msg->create_payload(5);
+    SrsBuffer stream(msg->payload(), 5);
+    stream.write_1bytes(0x17);
+    stream.write_1bytes(0x01);
+    stream.write_3bytes(0x000000);
+
+    SrsUniquePtr<SrsMediaPacket> pkt(new SrsMediaPacket());
+    msg->to_msg(pkt.get());
+    HELPER_EXPECT_SUCCESS(forwarder->on_video(pkt.get()));
+    EXPECT_EQ(1, forwarder->queue_->size());
+
+    HELPER_EXPECT_SUCCESS(forwarder->on_publish());
+    for (int i = 0; i < 100 && forwarder->queue_->size() > 0; i++) {
+        srs_usleep(1 * SRS_UTIME_MILLISECONDS);
+    }
+
+    EXPECT_EQ(0, forwarder->queue_->size());
+
+    forwarder->on_unpublish();
+    srs_usleep(1 * SRS_UTIME_MILLISECONDS);
+}
