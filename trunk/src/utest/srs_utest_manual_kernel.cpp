@@ -6609,6 +6609,28 @@ VOID TEST(KernelTSTest, CoverContextEncodeHEVC)
     }
 }
 
+VOID TEST(KernelTSTest, DecodeAdaptationFieldExtensionOverflow)
+{
+    SrsTsContext ctx;
+    MockTsHandler h;
+
+    uint8_t raw[SRS_TS_PACKET_SIZE];
+    memset(raw, 0xff, sizeof(raw));
+
+    raw[0] = 0x47; // sync byte
+    raw[1] = 0x00;
+    raw[2] = 0x00;
+    raw[3] = 0x20; // adaptation field only
+    raw[4] = 0xb7; // adaptation_field_length = 183
+    raw[5] = 0x01; // adaptation_field_extension_flag
+    raw[6] = 0xff; // impossible extension length for the remaining TS packet
+    raw[7] = 0x00;
+
+    SrsBuffer b((char *)raw, sizeof(raw));
+    srs_error_t err = ctx.decode(&b, &h);
+    HELPER_EXPECT_FAILED(err);
+}
+
 VOID TEST(KernelTSTest, CoverContextDecode)
 {
     srs_error_t err;

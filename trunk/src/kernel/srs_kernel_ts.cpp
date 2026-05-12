@@ -1064,6 +1064,10 @@ srs_error_t SrsTsAdaptationField::decode(SrsBuffer *stream)
         return srs_error_new(ERROR_STREAM_CASTER_TS_AF, "ts: demux af length failed, must be 183, actual=%d", adaption_field_length_);
     }
 
+    if (!stream->require(adaption_field_length_)) {
+        return srs_error_new(ERROR_STREAM_CASTER_TS_AF, "ts: demux af length exceeds packet, length=%d, left=%d", adaption_field_length_, stream->left());
+    }
+
     // no adaptation field.
     if (adaption_field_length_ == 0) {
         srs_info("ts: demux af empty.");
@@ -1163,63 +1167,79 @@ srs_error_t SrsTsAdaptationField::decode(SrsBuffer *stream)
     }
 
     if (adaptation_field_extension_flag_) {
-        int pos_af_ext = stream->pos();
-
-        if (!stream->require(2)) {
+        if (!stream->require(1)) {
             return srs_error_new(ERROR_STREAM_CASTER_TS_AF, "ts: demux af adaptation_field_extension_flag");
         }
         adaptation_field_extension_length_ = (uint8_t)stream->read_1bytes();
-        int8_t ltwfv = stream->read_1bytes();
 
-        piecewise_rate_flag_ = (ltwfv >> 6) & 0x01;
-        seamless_splice_flag_ = (ltwfv >> 5) & 0x01;
-        ltw_flag_ = (ltwfv >> 7) & 0x01;
-        const1_value1_ = ltwfv & 0x1F;
-
-        if (ltw_flag_) {
-            if (!stream->require(2)) {
-                return srs_error_new(ERROR_STREAM_CASTER_TS_AF, "ts: demux af ltw_flag");
-            }
-            ltw_offset_ = stream->read_2bytes();
-
-            ltw_valid_flag_ = (ltw_offset_ >> 15) & 0x01;
-            ltw_offset_ &= 0x7FFF;
+        if (!stream->require(adaptation_field_extension_length_)) {
+            return srs_error_new(ERROR_STREAM_CASTER_TS_AF, "ts: demux af extension exceeds packet, length=%d, left=%d", adaptation_field_extension_length_, stream->left());
         }
 
-        if (piecewise_rate_flag_) {
-            if (!stream->require(3)) {
-                return srs_error_new(ERROR_STREAM_CASTER_TS_AF, "ts: demux af piecewise_rate_flag");
+        if (adaptation_field_extension_length_ > 0) {
+            int pos_af_ext = stream->pos();
+            int8_t ltwfv = stream->read_1bytes();
+
+            piecewise_rate_flag_ = (ltwfv >> 6) & 0x01;
+            seamless_splice_flag_ = (ltwfv >> 5) & 0x01;
+            ltw_flag_ = (ltwfv >> 7) & 0x01;
+            const1_value1_ = ltwfv & 0x1F;
+
+            if (ltw_flag_) {
+                if (!stream->require(2)) {
+                    return srs_error_new(ERROR_STREAM_CASTER_TS_AF, "ts: demux af ltw_flag");
+                }
+                ltw_offset_ = stream->read_2bytes();
+
+                ltw_valid_flag_ = (ltw_offset_ >> 15) & 0x01;
+                ltw_offset_ &= 0x7FFF;
             }
-            piecewise_rate_ = stream->read_3bytes();
 
-            piecewise_rate_ &= 0x3FFFFF;
-        }
+            if (piecewise_rate_flag_) {
+                if (!stream->require(3)) {
+                    return srs_error_new(ERROR_STREAM_CASTER_TS_AF, "ts: demux af piecewise_rate_flag");
+                }
+                piecewise_rate_ = stream->read_3bytes();
 
-        if (seamless_splice_flag_) {
-            if (!stream->require(5)) {
-                return srs_error_new(ERROR_STREAM_CASTER_TS_AF, "ts: demux af seamless_splice_flag");
+                piecewise_rate_ &= 0x3FFFFF;
             }
-            marker_bit0_ = stream->read_1bytes();
-            DTS_next_AU1_ = stream->read_2bytes();
-            DTS_next_AU2_ = stream->read_2bytes();
 
-            splice_type_ = (marker_bit0_ >> 4) & 0x0F;
-            DTS_next_AU0_ = (marker_bit0_ >> 1) & 0x07;
-            marker_bit0_ &= 0x01;
+            if (seamless_splice_flag_) {
+                if (!stream->require(5)) {
+                    return srs_error_new(ERROR_STREAM_CASTER_TS_AF, "ts: demux af seamless_splice_flag");
+                }
+                marker_bit0_ = stream->read_1bytes();
+                DTS_next_AU1_ = stream->read_2bytes();
+                DTS_next_AU2_ = stream->read_2bytes();
 
-            marker_bit1_ = DTS_next_AU1_ & 0x01;
-            DTS_next_AU1_ = (DTS_next_AU1_ >> 1) & 0x7FFF;
+                splice_type_ = (marker_bit0_ >> 4) & 0x0F;
+                DTS_next_AU0_ = (marker_bit0_ >> 1) & 0x07;
+                marker_bit0_ &= 0x01;
 
-            marker_bit2_ = DTS_next_AU2_ & 0x01;
-            DTS_next_AU2_ = (DTS_next_AU2_ >> 1) & 0x7FFF;
+                marker_bit1_ = DTS_next_AU1_ & 0x01;
+                DTS_next_AU1_ = (DTS_next_AU1_ >> 1) & 0x7FFF;
+
+                marker_bit2_ = DTS_next_AU2_ & 0x01;
+                DTS_next_AU2_ = (DTS_next_AU2_ >> 1) & 0x7FFF;
+            }
+
+            int nb_af_ext_parsed = stream->pos() - pos_af_ext;
+            if (nb_af_ext_parsed > adaptation_field_extension_length_) {
+                return srs_error_new(ERROR_STREAM_CASTER_TS_AF, "ts: demux af extension overflow, length=%d, parsed=%d", adaptation_field_extension_length_, nb_af_ext_parsed);
+            }
+
+            nb_af_ext_reserved_ = adaptation_field_extension_length_ - nb_af_ext_parsed;
+            stream->skip(nb_af_ext_reserved_);
         }
-
-        nb_af_ext_reserved_ = adaptation_field_extension_length_ - (stream->pos() - pos_af_ext);
-        stream->skip(nb_af_ext_reserved_);
     }
     // LCOV_EXCL_STOP
 
-    nb_af_reserved_ = adaption_field_length_ - (stream->pos() - pos_af);
+    int nb_af_parsed = stream->pos() - pos_af;
+    if (nb_af_parsed > adaption_field_length_) {
+        return srs_error_new(ERROR_STREAM_CASTER_TS_AF, "ts: demux af overflow, length=%d, parsed=%d", adaption_field_length_, nb_af_parsed);
+    }
+
+    nb_af_reserved_ = adaption_field_length_ - nb_af_parsed;
     stream->skip(nb_af_reserved_);
 
     srs_info("ts: af parsed, discontinuity=%d random=%d priority=%d PCR=%d OPCR=%d slicing=%d private=%d extension=%d/%d pcr=%" PRId64 "/%d opcr=%" PRId64 "/%d",
